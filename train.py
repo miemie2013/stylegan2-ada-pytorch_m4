@@ -414,6 +414,7 @@ def subprocess_fn2(local_rank, args, temp_dir,
     world_size = num_machines * num_gpus_per_machine
     print("old args.num_gpus = {}".format(args.num_gpus))
     args.num_gpus = world_size
+    args.batch_gpu = args.batch_size // world_size
     print("new args.num_gpus = {}".format(args.num_gpus))
 
     # Init torch.distributed.
@@ -437,7 +438,7 @@ def subprocess_fn2(local_rank, args, temp_dir,
         custom_ops.verbosity = 'none'
 
     # Execute training loop.
-    training_loop.training_loop(rank=local_rank, **args)
+    training_loop.training_loop(rank=global_rank, local_rank=local_rank, **args)
 
 def get_num_devices():
     gpu_list = os.getenv('CUDA_VISIBLE_DEVICES', None)
