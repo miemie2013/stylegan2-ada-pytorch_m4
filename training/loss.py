@@ -95,6 +95,7 @@ class StyleGAN2Loss(Loss):
         这用于DDP模型中的梯度累加，DDP模型训练时，每一次优化器step()之前，可能有K次loss.backward()，
         那么，前K-1次loss.backward()应该使用with module.no_sync():使得梯度可以累加，最后1次loss.backward()。
         '''
+        aaaaaaaa1 = training_stats._counters
 
         # Gmain: Maximize logits for generated images.
         if do_Gmain:
@@ -113,7 +114,6 @@ class StyleGAN2Loss(Loss):
                     save_tensor(dic, phase + ' gen_logits', gen_logits)
                 else:
                     print_diff(dic, phase + ' gen_logits', gen_logits)
-                aaaaaaaa1 = training_stats._counters
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
