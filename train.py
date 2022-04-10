@@ -412,6 +412,9 @@ def subprocess_fn2(local_rank, args, temp_dir,
     global_rank = machine_rank * num_gpus_per_machine + local_rank
     print("Rank {} initialization finished.".format(global_rank))
     world_size = num_machines * num_gpus_per_machine
+    print("old args.num_gpus = {}".format(args.num_gpus))
+    args.num_gpus = world_size
+    print("new args.num_gpus = {}".format(args.num_gpus))
 
     # Init torch.distributed.
     try:
@@ -428,15 +431,13 @@ def subprocess_fn2(local_rank, args, temp_dir,
         raise
 
     # Init torch_utils.
-    rank = global_rank
-    # rank = local_rank
-    sync_device = torch.device('cuda', rank)
-    training_stats.init_multiprocessing(rank=rank, sync_device=sync_device)
-    if rank != 0:
+    sync_device = torch.device('cuda', local_rank)
+    training_stats.init_multiprocessing(rank=local_rank, sync_device=sync_device)
+    if local_rank != 0:
         custom_ops.verbosity = 'none'
 
     # Execute training loop.
-    training_loop.training_loop(rank=rank, **args)
+    training_loop.training_loop(rank=local_rank, **args)
 
 def get_num_devices():
     gpu_list = os.getenv('CUDA_VISIBLE_DEVICES', None)
