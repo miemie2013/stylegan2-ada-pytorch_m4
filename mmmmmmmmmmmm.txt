@@ -63,6 +63,12 @@ python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/tr
 python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --gpus=2 --cfg my32 --batch 8 --aug ada --save_npz 0
 
 
+CUDA_VISIBLE_DEVICES=0
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --dist_url tcp://192.168.0.104:12318 --num_machines 2 --machine_rank 0 --cfg my32 --batch 8 --aug ada --save_npz 1
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --dist_url tcp://192.168.0.104:12318 --num_machines 2 --machine_rank 0 --cfg my32 --batch 8 --aug ada --save_npz 0
+
+
 
 # 压缩
 rm -rf aaa.zip

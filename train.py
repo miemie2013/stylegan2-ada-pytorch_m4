@@ -401,6 +401,52 @@ def subprocess_fn(rank, args, temp_dir):
     # Execute training loop.
     training_loop.training_loop(rank=rank, **args)
 
+def subprocess_fn2(local_rank, args, temp_dir,
+                   dist_url,
+                   num_machines,
+                   machine_rank,
+                   num_gpus_per_machine,
+                   ):
+    dnnlib.util.Logger(file_name=os.path.join(args.run_dir, 'log.txt'), file_mode='a', should_flush=True)
+
+    global_rank = machine_rank * num_gpus_per_machine + local_rank
+    print("Rank {} initialization finished.".format(global_rank))
+    world_size = num_machines * num_gpus_per_machine
+
+    # Init torch.distributed.
+    try:
+        from datetime import timedelta
+        torch.distributed.init_process_group(
+            backend='nccl',
+            init_method=dist_url,
+            world_size=world_size,
+            rank=global_rank,
+            timeout=timedelta(minutes=30),
+        )
+    except Exception:
+        print("Process group URL: {}".format(dist_url))
+        raise
+
+    # Init torch_utils.
+    rank = global_rank
+    # rank = local_rank
+    sync_device = torch.device('cuda', rank)
+    training_stats.init_multiprocessing(rank=rank, sync_device=sync_device)
+    if rank != 0:
+        custom_ops.verbosity = 'none'
+
+    # Execute training loop.
+    training_loop.training_loop(rank=rank, **args)
+
+def get_num_devices():
+    gpu_list = os.getenv('CUDA_VISIBLE_DEVICES', None)
+    if gpu_list is not None:
+        return len(gpu_list.split(','))
+    else:
+        devices_list_info = os.popen("nvidia-smi -L")
+        devices_list_info = devices_list_info.read().strip().split("\n")
+        return len(devices_list_info)
+
 #----------------------------------------------------------------------------
 
 class CommaSeparatedList(click.ParamType):
@@ -550,10 +596,41 @@ def main(ctx, outdir, dry_run, **config_kwargs):
     print('Launching processes...')
     torch.multiprocessing.set_start_method('spawn')
     with tempfile.TemporaryDirectory() as temp_dir:
-        if args.num_gpus == 1:
+        if args.dist_url is not None:
+            # 多机多卡训练时，暂时只支持每机1卡。
+            num_gpus_per_machine = get_num_devices()
+            assert num_gpus_per_machine == 1
+            dist_url = args.dist_url
+            num_machines = args.num_machines
+            machine_rank = args.machine_rank
+            torch.multiprocessing.start_processes(
+                subprocess_fn2,
+                nprocs=args.num_gpus,
+                args=(
+                    args,
+                    temp_dir,
+                    dist_url,
+                    num_machines,
+                    machine_rank,
+                    num_gpus_per_machine,
+                ),
+                daemon=False,
+                start_method='spawn',
+            )
+        elif args.num_gpus == 1:
             subprocess_fn(rank=0, args=args, temp_dir=temp_dir)
-        else:
-            torch.multiprocessing.spawn(fn=subprocess_fn, args=(args, temp_dir), nprocs=args.num_gpus)
+        elif args.num_gpus > 1:
+            # torch.multiprocessing.spawn(fn=subprocess_fn, args=(args, temp_dir), nprocs=args.num_gpus)
+            torch.multiprocessing.start_processes(
+                subprocess_fn,
+                nprocs=args.num_gpus,
+                args=(
+                    args,
+                    temp_dir,
+                ),
+                daemon=False,
+                start_method='spawn',
+            )
 
 #----------------------------------------------------------------------------
 
