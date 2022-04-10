@@ -1,0 +1,157 @@
+
+
+
+
+
+
+先把afhq数据集下载好，解压，再输入下面命令做成压缩包：
+python dataset_tool.py --source=../data/data42681/afhq/train/cat --dest=./datasets/afhqcat.zip
+python dataset_tool.py --source=../data/data42681/afhq/train/dog --dest=./datasets/afhqdog.zip
+python dataset_tool.py --source=../data/data42681/afhq/train/wild --dest=./datasets/afhqwild.zip
+
+
+
+
+训练（以训练afhq的猫为例）：
+对应的预训练模型是：
+wget https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/afhqcat.pkl
+
+因为loss.py里有
+batch_size = gen_z.shape[0] // self.pl_batch_shrink
+而且self.pl_batch_shrink = 2
+所以批大小至少为2，避免报错。
+
+
+梯度对齐：(如果显存不足，借用一下11G的卡)
+自己和自己对齐时，发现一个新坑，优化器要换成SGD：
+            if name == 'G':
+                opt = torch.optim.SGD(module.parameters(), lr=0.00001, momentum=0.9)
+            elif name == 'D':
+                opt = torch.optim.SGD(module.parameters(), lr=0.00002, momentum=0.9)
+因为Adam更新参数有一定随机性，同样的情况下，跑2次结果不同！！！（但是SGD也有轻微的不同，影响不大。）
+
+training/training_loop.py
+        save_npz = True    # 为True时表示，记录前20步的输入、输出、梯度。
+        # save_npz = False   # 为False时表示，读取为True时保存的输入，自己和自己对齐。
+
+
+
+第三方实现stylegan2-ada时，不要忘记创建G和D的实例时，都需要设置其的requires_grad_(False)
+    G = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
+    D = dnnlib.util.construct_class_by_name(**D_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
+因为第0步训练Gmain阶段时，D的权重应该不允许得到梯度。
+而且，除了augment_pipe，其它4个 G.mapping、G.synthesis、D、G_ema 都是DDP模型。
+
+
+# 安装依赖
+cd ~/w*
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+save_npz = True   # 为True时表示，记录前20步的输入、输出、梯度。
+save_npz = False  # 为False时表示，读取为True时保存的输入，自己和自己对齐。
+
+CUDA_VISIBLE_DEVICES=0
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --gpus=1 --cfg my32 --batch 8 --aug ada --save_npz 1
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --gpus=1 --cfg my32 --batch 8 --aug ada --save_npz 0
+
+
+CUDA_VISIBLE_DEVICES=0,1
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --gpus=2 --cfg my32 --batch 8 --aug ada --save_npz 1
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/dog_32 --gpus=2 --cfg my32 --batch 8 --aug ada --save_npz 0
+
+
+
+# 压缩
+rm -rf aaa.zip
+
+
+zip -r aaa.zip batch*.npz G_00.pth G_19.pth G_ema_00.pth G_ema_19.pth D_00.pth D_19.pth
+
+
+rm -rf batch*.npz G_00.pth G_19.pth G_ema_00.pth G_ema_19.pth D_00.pth D_19.pth
+
+
+cp aaa.zip ../miemieGAN/aaa.zip
+
+
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/cat --gpus=1 --cfg paper512 --batch 2 --aug noaug --resume afhqcat.pkl
+
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/cat --gpus=1 --cfg paper512 --batch 1 --aug noaug --resume afhqcat.pkl
+
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/cat --gpus=1 --cfg paper512 --batch 2 --resume afhqcat.pkl
+
+
+nohup python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/cat --gpus=1 --cfg paper512 --batch 2 --resume afhqcat.pkl > stylegan2ada.log 2>&1 &
+
+
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ./datasets/afhqcat.zip --gpus=1 --cfg paper512 --batch 2
+
+
+复现论文结果的命令：
+python train.py --outdir ./StyleGAN2_ADA_Output --data ./datasets/afhqcat.zip --gpus=8 --cfg paper512
+
+
+
+python train.py --outdir ./StyleGAN2_ADA_Output --data ../data/data42681/afhq/train/cat --gpus=1 --cfg paper512 --batch 1 --aug noaug --resume afhqcat.pkl
+
+
+
+
+预测：
+python generate.py --outdir=out --trunc=1 --seeds=85,265,297,849 --network=afhqcat.pkl
+
+
+python generate.py --outdir=out --trunc=0.7 --seeds=600-605 --network=afhqcat.pkl
+
+
+# style_mixing
+# python style_mixing.py --outdir=out_style_mixing --rows=85,100,75,458,1500 --cols=55,821,1789,293 --network=afhqcat.pkl
+style_mixing的随机种子在style_mixing.py里面改，不建议使用命令行指定了。
+
+python style_mixing.py --outdir=out_style_mixing --network=afhqcat.pkl
+
+
+python style_mixing.py --outdir=out_style_mixing --network=metfaces.pkl
+
+
+# save_pth。保存为.pth模型。（可以给miemieGAN的tools/convert_weights.py脚本转换权重用。）
+
+python save_pth.py --network=afhqcat.pkl --g_ema_name=G_ema_afhqcat.pth --g_name=G_afhqcat.pth --d_name=D_afhqcat.pth
+
+
+python save_pth.py --network=metfaces.pkl --g_ema_name=G_ema_metfaces.pth --g_name=G_metfaces.pth --d_name=D_metfaces.pth
+
+
+python save_pth.py --network=ffhq.pkl --g_ema_name=G_ema_ffhq.pth --g_name=G_ffhq.pth --d_name=D_ffhq.pth
+
+
+
+# 如果对style_mixing的行列感兴趣的话
+python generate.py --outdir=out_row --trunc=1 --seeds=85,100,75,458,1500 --network=afhqcat.pkl
+python generate.py --outdir=out_col --trunc=1 --seeds=55,821,1789,293 --network=afhqcat.pkl
+
+
+
+
+# 指标
+
+# Previous training run: look up options automatically, save result to JSONL file.
+python calc_metrics.py --metrics=pr50k3_full --network=~/training-runs/00000-ffhq10k-res64-auto1/network-snapshot-000000.pkl
+
+# Pre-trained network pickle: specify dataset explicitly, print result to stdout.
+python calc_metrics.py --metrics=fid50k_full --data=~/datasets/ffhq.zip --mirror=1 --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/ffhq.pkl
+
+
+
+python calc_metrics.py --metrics=fid50k_full --data=../data/data42681/afhq/train/cat --network=afhqcat.pkl
+
+
+
+
