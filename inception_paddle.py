@@ -330,7 +330,7 @@ class ConvBNLayer(TheseusLayer):
             padding=padding,
             groups=groups,
             bias_attr=False)
-        self.bn = BatchNorm(num_filters)
+        self.bn = BatchNorm(num_filters, epsilon=0.001)
         self.relu = nn.ReLU()
 
     def forward(self, x):
