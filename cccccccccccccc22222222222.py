@@ -5,6 +5,10 @@ import operator
 import os
 import numpy as np
 
+torch.backends.cudnn.benchmark = True  # Improves training speed.
+torch.backends.cuda.matmul.allow_tf32 = False  # Allow PyTorch to internally use tf32 for matmul
+torch.backends.cudnn.allow_tf32 = False  # Allow PyTorch to internally use tf32 for convolutions
+
 import inception_pytorch
 
 
@@ -103,7 +107,7 @@ code = model.code
 print(code)
 code = code.replace('_15 = features', '_15 = theta')
 print(code)
-model.code = code
+# model.code = code
 
 features = model(images, return_features=return_features, use_fp16=use_fp16, no_output_bias=no_output_bias)
 features2 = model2(images, return_features=return_features, use_fp16=use_fp16, no_output_bias=no_output_bias)
@@ -115,8 +119,6 @@ features2 = model2(images, return_features=return_features, use_fp16=use_fp16, n
 ddd = np.sum((features2.cpu().detach().numpy() - features.cpu().detach().numpy()) ** 2)
 print('diff=%.6f (%s)' % (ddd, 'features'))
 
-# ddd = np.sum((features3.cpu().detach().numpy() - features.cpu().detach().numpy()) ** 2)
-# print('diff=%.6f (%s)' % (ddd, 'features'))
 
 print()
 
