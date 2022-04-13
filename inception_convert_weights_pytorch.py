@@ -18,6 +18,7 @@ import inception_paddle
 model = torch.load('inception-2015-12-05.pt', map_location=torch.device('cpu'))
 std1 = model.state_dict()
 save_name = 'inception-2015-12-05.pdparams'
+save_name_pth = 'inception-2015-12-05.pth'
 model.eval()
 
 
@@ -77,7 +78,8 @@ copy('output.bias', std1['output.bias'].data.numpy(), std3)
 
 model2.load_state_dict(std2)
 model3.set_state_dict(std3)
-
+torch.save(std2, save_name_pth)
+paddle.save(std3, save_name)
 
 x_shape = [4, 3, 512, 512]
 images = torch.randn(x_shape)
