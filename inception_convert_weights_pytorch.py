@@ -1,7 +1,7 @@
 
 
 import torch
-import operator
+import paddle
 import os
 import numpy as np
 
@@ -10,6 +10,7 @@ torch.backends.cuda.matmul.allow_tf32 = False  # Allow PyTorch to internally use
 torch.backends.cudnn.allow_tf32 = False  # Allow PyTorch to internally use tf32 for convolutions
 
 import inception_pytorch
+import inception_paddle
 
 
 
@@ -24,9 +25,26 @@ model2 = inception_pytorch.InceptionV3()
 std2 = model2.state_dict()
 model2.eval()
 
+model3 = inception_paddle.InceptionV3()
+std3 = model3.state_dict()
+model3.eval()
 
-map = {}
+
 already_used = []
+
+
+use_gpu = True
+
+gpu_id = int(os.environ.get('FLAGS_selected_gpus', 0))
+place = paddle.CUDAPlace(gpu_id) if use_gpu else paddle.CPUPlace()
+
+
+def copy(name, w, std):
+    value2 = paddle.to_tensor(w, place=place)
+    value = std[name]
+    value = value * 0 + value2
+    std[name] = value
+
 
 
 
@@ -37,62 +55,34 @@ for key2, value2 in std2.items():
         continue
     if '.conv.weight' in key2:
         key1 = key2.replace('.conv.weight', '.weight')
-        map[key2] = key1
         std2[key2] = std1[key1]
+        copy(key2, std1[key1].data.numpy(), std3)
     if '.bn.bias' in key2:
         key1 = key2.replace('.bn.bias', '.beta')
-        map[key2] = key1
         std2[key2] = std1[key1]
+        copy(key2, std1[key1].data.numpy(), std3)
     if '.bn.running_mean' in key2:
         key1 = key2.replace('.bn.running_mean', '.mean')
-        map[key2] = key1
         std2[key2] = std1[key1]
+        copy(key2.replace('.running_mean', '._mean'), std1[key1].data.numpy(), std3)
     if '.bn.running_var' in key2:
         key1 = key2.replace('.bn.running_var', '.var')
-        map[key2] = key1
         std2[key2] = std1[key1]
-map['output.weight'] = 'output.weight'
-map['output.bias'] = 'output.bias'
+        copy(key2.replace('.running_var', '._variance'), std1[key1].data.numpy(), std3)
 
 std2['output.weight'] = std1['output.weight']
 std2['output.bias'] = std1['output.bias']
+copy('output.weight', std1['output.weight'].data.numpy().transpose(1, 0), std3)
+copy('output.bias', std1['output.bias'].data.numpy(), std3)
 
 model2.load_state_dict(std2)
+model3.set_state_dict(std3)
 
 
-# x_shape = [4, 3, 512, 512]
-# images = torch.randn(x_shape)
-
-import cv2
-images = cv2.imread('../data/data42681/afhq/train/cat/flickr_cat_000005.jpg')
-images = torch.Tensor(images)
-images = images.unsqueeze(0)
-images = images.permute(0, 3, 1, 2)
-
-
-
-def transform(img):
-    batch_size, channels, height, width, = img.shape
-    x = paddle.cast(img, paddle.float32)
-    theta = paddle.eye(2, 3, dtype=paddle.float32)
-    _3 = theta[0][2]
-    _4 = theta[0][0]
-    _5 = _4 / width
-    _6 = theta[0][0]
-    _7 = _3 + (_5 - _6 / 299.0)
-    _8 = theta[1][2]
-    _9 = theta[1][1]
-    _10 = (_9 / height)
-    _11 = theta[1][1]
-    _12 = _8 + (_10 - (_11 / 299.0))
-    _13 = paddle.unsqueeze(paddle.cast(theta, x.dtype), 0)
-    theta0 = paddle.tile(_13, [batch_size, 1, 1])
-    grid = paddle.nn.functional.affine_grid(theta0, [batch_size, channels, 299, 299], False, )
-    x0 = paddle.nn.functional.grid_sample(x, grid, "bilinear", "border", False, )
-    x1 = x0 - 128.0
-    x2 = x1 / 128.0
-    return x2
-
+x_shape = [4, 3, 512, 512]
+images = torch.randn(x_shape)
+images2 = images.cpu().detach().numpy()
+images2 = paddle.to_tensor(images2)
 
 return_features = False
 return_features = True
@@ -105,18 +95,20 @@ no_output_bias = False
 
 code = model.code
 print(code)
-code = code.replace('_15 = features', '_15 = theta')
-print(code)
-# model.code = code
 
 features = model(images, return_features=return_features, use_fp16=use_fp16, no_output_bias=no_output_bias)
 features2 = model2(images, return_features=return_features, use_fp16=use_fp16, no_output_bias=no_output_bias)
+features3 = model3(images2, return_features=return_features, use_fp16=use_fp16, no_output_bias=no_output_bias)
 
 # features = model.layers(images)
 # features2 = model2.layers(images)
+# features3 = model3.layers(images2)
 
 
 ddd = np.sum((features2.cpu().detach().numpy() - features.cpu().detach().numpy()) ** 2)
+print('diff=%.6f (%s)' % (ddd, 'features'))
+
+ddd = np.sum((features3.numpy() - features.cpu().detach().numpy()) ** 2)
 print('diff=%.6f (%s)' % (ddd, 'features'))
 
 

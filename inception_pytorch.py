@@ -1,16 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import operator
-import os
-import numpy as np
-
-
-
-# model = torch.load('inception-2015-12-05.pt', map_location=torch.device('cpu'))
-# std1 = model.state_dict()
-# save_name = 'inception-2015-12-05.pdparams'
-
 
 
 class Conv2dLayer(nn.Module):
@@ -39,9 +29,6 @@ class Conv2dLayer(nn.Module):
         x = self.bn(x)
         x = self.relu(x)
         return x
-
-
-
 
 
 class InceptionE(nn.Module):
@@ -80,8 +67,6 @@ class InceptionE(nn.Module):
         return torch.cat(_9, 1)
 
 
-
-
 class InceptionD(nn.Module):
     def __init__(self, num_channels):
         super().__init__()
@@ -100,8 +85,6 @@ class InceptionD(nn.Module):
         _1 = self.tower_1(x)
         _2 = self.pool(x)
         return torch.cat([_0, _1, _2], 1)
-
-
 
 
 class InceptionC(nn.Module):
@@ -147,8 +130,6 @@ class InceptionB(nn.Module):
         return torch.cat([_0, _1, _2], 1)
 
 
-
-
 class InceptionA(nn.Module):
     def __init__(self, num_channels, pool_features):
         super().__init__()
@@ -170,8 +151,6 @@ class InceptionA(nn.Module):
         _2 = self.tower_1(x)
         _3 = self.tower_2(x)
         return torch.cat([_0, _1, _2, _3], 1)
-
-
 
 
 class InceptionV3(nn.Module):
@@ -202,32 +181,34 @@ class InceptionV3(nn.Module):
     def forward(self, img, return_features=False, use_fp16=False, no_output_bias=False):
         batch_size, channels, height, width, = img.shape
         if use_fp16:
-            type_ = torch.float16
+            _2 = torch.float16
         else:
-            type_ = torch.float32
-        x = img.to(type_)
+            _2 = torch.float32
+        x = img.to(_2)
         theta = torch.eye(2, 3, dtype=None, device=x.device)
-        _3 = torch.select(torch.select(theta, 0, 0), 0, 2)
-        _4 = torch.select(torch.select(theta, 0, 0), 0, 0)
-        _5 = torch.div(_4, width)
-        _6 = torch.select(torch.select(theta, 0, 0), 0, 0)
-        _7 = _3 + torch.sub(_5, torch.div(_6, 299))
-        _8 = torch.select(torch.select(theta, 0, 1), 0, 2)
-        _9 = torch.select(torch.select(theta, 0, 1), 0, 1)
-        _10 = torch.div(_9, height)
-        _11 = torch.select(torch.select(theta, 0, 1), 0, 1)
-        _12 = _8 + torch.sub(_10, torch.div(_11, 299))
-        _13 = torch.unsqueeze(theta.to(x.dtype), 0)
-        theta0 = _13.repeat([batch_size, 1, 1])
+        _3 = theta[0, 2]
+        _4 = theta[0, 0]
+        _5 = _4.div(width)
+        _6 = theta[0, 0]
+        _7 = _5.sub(_6.div(299))
+        _8 = _3.add_(_7)
+        _9 = theta[1, 2]
+        _10 = theta[1, 1]
+        _11 = _10.div(height)
+        _12 = theta[1, 1]
+        _13 = _11.sub(_12.div(299))
+        _14 = _9.add_(_13)
+        _15 = theta.to(x.dtype)
+        theta0 = torch.unsqueeze(_15, 0).repeat([batch_size, 1, 1])
         grid = torch.nn.functional.affine_grid(theta0, [batch_size, channels, 299, 299], False)
         x0 = torch.nn.functional.grid_sample(x, grid, "bilinear", "border", False)
-        x1 = x0 - 127.5
-        x2 = x1 / 127.5
+        x1 = x0.sub_(128)
+        x2 = x1.div_(128)
 
         _14 = torch.reshape(self.layers(x2), [-1, 2048])
         features = _14.to(torch.float32)
         if return_features:
-            return _14
+            return features
         else:
             if no_output_bias:
                 logits0 = torch.nn.functional.linear(features, self.output.weight, None, )
@@ -237,10 +218,3 @@ class InceptionV3(nn.Module):
             _16 = torch.nn.functional.softmax(logits, 1, 3, None, )
             _15 = _16
         return _15
-
-
-
-print()
-
-
-
