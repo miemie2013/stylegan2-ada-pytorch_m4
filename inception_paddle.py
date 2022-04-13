@@ -192,12 +192,14 @@ class InceptionV3(nn.Layer):
         _6 = theta[0, 0]
         _7 = _5 - _6 / 299.0
         _8 = _3 + _7
+        theta[0, 2] = _8   # pytorch中的add_会覆盖原张量
         _9 = theta[1, 2]
         _10 = theta[1, 1]
         _11 = _10 / height
         _12 = theta[1, 1]
         _13 = _11 - _12 / 299.0
         _14 = _9 + _13
+        theta[1, 2] = _14   # pytorch中的add_会覆盖原张量
         _15 = paddle.cast(theta, x.dtype)
         theta0 = paddle.unsqueeze(_15, 0).tile([batch_size, 1, 1])
         grid = paddle.nn.functional.affine_grid(theta0, [batch_size, channels, 299, 299], False)
